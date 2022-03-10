@@ -290,10 +290,6 @@ public class Constants {
     public static final String HISTORY_SERVER_JOB_URL = "azkaban.server.external.history_server_job_url";
     public static final String SPARK_HISTORY_SERVER_JOB_URL = "azkaban.server.external.spark_history_server_job_url";
 
-    // Configures the Kafka appender for logging user jobs, specified for the exec server
-    public static final String AZKABAN_SERVER_LOGGING_KAFKA_BROKERLIST = "azkaban.server.logging.kafka.brokerList";
-    public static final String AZKABAN_SERVER_LOGGING_KAFKA_TOPIC = "azkaban.server.logging.kafka.topic";
-
     public static final String IS_METRICS_ENABLED = "azkaban.is.metrics.enabled";
 
     // Web and Exec server properties to configure a custom metrics reporter.
@@ -535,10 +531,6 @@ public class Constants {
   }
 
   public static class JobProperties {
-
-    // Job property that enables/disables using Kafka logging of user job logs
-    public static final String AZKABAN_JOB_LOGGING_KAFKA_ENABLE = "azkaban.job.logging.kafka.enable";
-
     /*
      * this parameter is used to replace EXTRA_HCAT_LOCATION that could fail when one of the uris is not available.
      * EXTRA_HCAT_CLUSTERS has the following format:
