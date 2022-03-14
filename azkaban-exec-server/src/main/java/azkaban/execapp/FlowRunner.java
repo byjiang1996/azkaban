@@ -55,6 +55,7 @@ import azkaban.flow.FlowUtils;
 import azkaban.imagemgmt.version.VersionInfo;
 import azkaban.jobExecutor.ProcessJob;
 import azkaban.jobtype.JobTypeManager;
+import azkaban.logging.LogAppender;
 import azkaban.metric.MetricReportManager;
 import azkaban.metrics.CommonMetrics;
 import azkaban.project.FlowLoaderUtils;
@@ -501,13 +502,9 @@ public class FlowRunner extends EventHandler<Event> implements Runnable {
     this.logger = Logger.getLogger(loggerName);
 
     // Create file appender
-    final String logName = "_flow." + loggerName + ".log";
-    this.logFile = new File(this.execDir, logName);
-    final String absolutePath = this.logFile.getAbsolutePath();
-
     this.flowAppender = null;
     try {
-      this.flowAppender = new FileAppender(this.loggerLayout, absolutePath, false);
+      this.flowAppender = new LogAppender(this.loggerLayout, flowId, this.execId, 0, this.execDir);
       this.logger.addAppender(this.flowAppender);
     } catch (final IOException e) {
       this.logger.error("Could not open log file in " + this.execDir, e);
@@ -518,12 +515,6 @@ public class FlowRunner extends EventHandler<Event> implements Runnable {
     if (!isContainerizedDispatchMethodEnabled() && this.logger != null) {
       this.logger.removeAppender(this.flowAppender);
       this.flowAppender.close();
-
-      try {
-        this.executorLoader.uploadLogFile(this.execId, "", 0, this.logFile);
-      } catch (final ExecutorManagerException e) {
-        e.printStackTrace();
-      }
     }
   }
 
@@ -1252,7 +1243,7 @@ public class FlowRunner extends EventHandler<Event> implements Runnable {
     }
 
     jobRunner.setDelayStart(node.getDelayedExecution());
-    jobRunner.setLogSettings(this.logger, this.jobLogFileSize, this.jobLogNumFiles);
+    jobRunner.setLogSettings(this.logger);
     jobRunner.addListener(this.listener);
 
     if (JobCallbackManager.isInitialized()) {

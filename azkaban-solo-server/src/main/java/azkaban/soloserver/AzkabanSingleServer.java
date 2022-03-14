@@ -25,6 +25,7 @@ import azkaban.execapp.AzkabanExecServerModule;
 import azkaban.execapp.AzkabanExecutorServer;
 import azkaban.server.AzkabanServer;
 import azkaban.utils.Props;
+import azkaban.utils.StdOutErrRedirect;
 import azkaban.webapp.AzkabanWebServer;
 import azkaban.webapp.AzkabanWebServerModule;
 import com.google.inject.Guice;
@@ -51,6 +52,7 @@ public class AzkabanSingleServer {
   }
 
   public static void main(final String[] args) {
+    StdOutErrRedirect.redirectOutAndErrToLog();
     try {
       start(args);
     } catch (final Exception e) {

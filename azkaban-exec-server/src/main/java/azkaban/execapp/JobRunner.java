@@ -100,9 +100,6 @@ public class JobRunner extends EventHandler implements Runnable {
   private Set<String> proxyUsers = null;
   private String effectiveUser = null;
 
-  private String jobLogChunkSize;
-  private int jobLogBackupIndex;
-
   private long delayStartMs = 0;
   private volatile boolean killed = false;
   private BlockingStatus currentBlockStatus = null;
@@ -192,11 +189,8 @@ public class JobRunner extends EventHandler implements Runnable {
     this.proxyUsers = proxyUsers;
   }
 
-  public void setLogSettings(final Logger flowLogger, final String logFileChuckSize,
-      final int numLogBackup) {
+  public void setLogSettings(final Logger flowLogger) {
     this.flowLogger = flowLogger;
-    this.jobLogChunkSize = logFileChuckSize;
-    this.jobLogBackupIndex = numLogBackup;
   }
 
   public Props getProps() {
@@ -393,8 +387,6 @@ public class JobRunner extends EventHandler implements Runnable {
     // Attempt to create FileAppender
     final RollingFileAppender fileAppender =
         new RollingFileAppender(this.loggerLayout, absolutePath, true);
-    fileAppender.setMaxBackupIndex(this.jobLogBackupIndex);
-    fileAppender.setMaxFileSize(this.jobLogChunkSize);
 
     this.flowLogger.info("Created file appender for job " + this.jobId);
     return fileAppender;

@@ -484,7 +484,7 @@ public class JobRunnerTest {
     FlowRunnerProxy flowRunnerProxy = Mockito.mock(FlowRunnerProxy.class);
     final JobRunner runner = new JobRunner(node, this.workingDir, loader, this.jobtypeManager,
         azkabanProps, flowRunnerProxy);
-    runner.setLogSettings(this.logger, "5MB", 4);
+    runner.setLogSettings(this.logger);
 
     runner.addListener(listener);
     return runner;
