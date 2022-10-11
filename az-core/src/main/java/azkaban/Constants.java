@@ -675,10 +675,14 @@ public class Constants {
         KUBERNETES_POD_PREFIX + "service.account.token.automount";
 
     // Kubernetes flow container related properties
+    public static final String KUBERNETES_VERTICAL_POD_AUTOSCALER_RAMPUP =
+        AZKABAN_KUBERNETES_PREFIX + "vpa.rampup";
     public static final String KUBERNETES_FLOW_CONTAINER_PREFIX = AZKABAN_KUBERNETES_PREFIX +
         "flow.container.";
     public static final String KUBERNETES_FLOW_CONTAINER_NAME =
         KUBERNETES_FLOW_CONTAINER_PREFIX + ".name";
+    public static final String KUBERNETES_FLOW_CONTAINER_CPU_RECOMMENDATION_MULTIPLIER =
+        KUBERNETES_FLOW_CONTAINER_PREFIX + "cpu.recommendation.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_CPU_LIMIT_MULTIPLIER =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "cpu.limit.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_CPU =
@@ -686,6 +690,8 @@ public class Constants {
     public static final String KUBERNETES_FLOW_CONTAINER_CPU_REQUEST =
         KUBERNETES_FLOW_CONTAINER_PREFIX +
             "cpu.request";
+    public static final String KUBERNETES_FLOW_CONTAINER_MEMORY_RECOMMENDATION_MULTIPLIER =
+        KUBERNETES_FLOW_CONTAINER_PREFIX + "memory.recommendation.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_MEMORY_LIMIT_MULTIPLIER =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "memory.limit.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_MEMORY =
@@ -726,6 +732,11 @@ public class Constants {
     public static final String KUBERNETES_SERVICE_PORT = KUBERNETES_SERVICE_PREFIX + "port";
     public static final String KUBERNETES_SERVICE_CREATION_TIMEOUT_MS = KUBERNETES_SERVICE_PREFIX +
         "creation.timeout.ms";
+
+    // Kubernetes vpa related properties
+    public static final String KUBERNETES_VPA_PREFIX = AZKABAN_KUBERNETES_PREFIX + "vpa.";
+    public static final String KUBERNETES_VPA_NAME_PREFIX = KUBERNETES_VPA_PREFIX +
+        "name.prefix";
 
     // Kubernetes Watch related properties
     public static final String KUBERNETES_WATCH_PREFIX = AZKABAN_KUBERNETES_PREFIX + "watch.";

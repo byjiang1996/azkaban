@@ -19,6 +19,7 @@ package azkaban.project;
 import azkaban.ServiceProvider;
 import azkaban.event.EventHandler;
 import azkaban.flow.Flow;
+import azkaban.flow.FlowRecommendation;
 import azkaban.spi.AzkabanEventReporter;
 import azkaban.user.Permission;
 import azkaban.user.Permission.Type;
@@ -54,6 +55,7 @@ public class Project extends EventHandler {
   private String lastModifiedUser;
   private String source;
   private Map<String, Flow> flows = new HashMap<>();
+  private Map<String, FlowRecommendation> flowRecommendations = new HashMap<>();
   private Map<String, Object> metadata = new HashMap<>();
   private static final Logger logger = LoggerFactory.getLogger(Project.class);
   // Added event listener for sending project events
@@ -150,6 +152,32 @@ public class Project extends EventHandler {
 
   public void setFlows(final Map<String, Flow> flows) {
     this.flows = ImmutableMap.copyOf(flows);
+  }
+
+  public FlowRecommendation getFlowRecommendation(final String flowId) {
+    if (this.flowRecommendations == null) {
+      return null;
+    }
+
+    return this.flowRecommendations.get(flowId);
+  }
+
+  public Map<String, FlowRecommendation> getFlowRecommendationMap() {
+    return this.flowRecommendations;
+  }
+
+  public List<FlowRecommendation> getFlowRecommendations() {
+    List<FlowRecommendation> retFlowRecommendations = null;
+    if (this.flows != null) {
+      retFlowRecommendations = new ArrayList<>(this.flowRecommendations.values());
+    } else {
+      retFlowRecommendations = new ArrayList<>();
+    }
+    return retFlowRecommendations;
+  }
+
+  public void setFlowRecommendations(final Map<String, FlowRecommendation> flowRecommendations) {
+    this.flowRecommendations = ImmutableMap.copyOf(flowRecommendations);
   }
 
   public Permission getCollectivePermission(final User user) {

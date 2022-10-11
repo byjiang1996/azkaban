@@ -24,6 +24,8 @@ import static azkaban.ServiceProvider.SERVICE_PROVIDER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import azkaban.AzkabanCommonModule;
@@ -76,6 +78,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
@@ -112,6 +115,8 @@ public class KubernetesContainerizedImplTest {
   private KubernetesContainerizedImpl kubernetesContainerizedImpl;
   private ExecutorLoader executorLoader;
   private ProjectLoader projectLoader;
+  private VPARecommender vpaRecommender;
+  private ApiClient client;
   private static DatabaseOperator dbOperator;
   private VersionSetLoader loader;
   private static ImageRampupManager imageRampupManager;
@@ -159,6 +164,8 @@ public class KubernetesContainerizedImplTest {
     this.props.put(ContainerizedDispatchManagerProperties.KUBERNETES_KUBE_CONFIG_PATH, "src/test"
         + "/resources/container/kubeconfig");
     this.props.put(ContainerizedDispatchManagerProperties.KUBERNETES_SERVICE_REQUIRED, "true");
+    // Do not enable VPA recommender by default in this unit test unless manually ramped up.
+    this.props.put(ContainerizedDispatchManagerProperties.KUBERNETES_VERTICAL_POD_AUTOSCALER_RAMPUP, 0);
     this.props.put(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_CPU_REQUEST,
         CPU_REQUESTED_IN_PROPS);
     this.props.put(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MEMORY_REQUEST
@@ -169,14 +176,17 @@ public class KubernetesContainerizedImplTest {
         MAX_ALLOWED_MEMORY);
     this.executorLoader = mock(ExecutorLoader.class);
     this.projectLoader = mock(ProjectLoader.class);
+    this.vpaRecommender = mock(VPARecommender.class);
     this.loader = new JdbcVersionSetLoader(this.dbOperator);
+    this.client = mock(ApiClient.class);
     SERVICE_PROVIDER.unsetInjector();
     SERVICE_PROVIDER.setInjector(getInjector(this.props));
     this.flowStatusChangeEventListener = new FlowStatusChangeEventListener(this.props);
     this.containerizationMetrics = new DummyContainerizationMetricsImpl();
     this.kubernetesContainerizedImpl = new KubernetesContainerizedImpl(this.props,
         this.executorLoader, this.loader, this.imageRampupManager, null,
-        flowStatusChangeEventListener, containerizationMetrics, null);
+        flowStatusChangeEventListener, containerizationMetrics, null, this.vpaRecommender,
+        this.client);
   }
 
   /**
@@ -188,6 +198,7 @@ public class KubernetesContainerizedImplTest {
    */
   @Test
   public void testCPUAndMemoryRequestedInFlowParam() throws Exception {
+    final ExecutableFlow flow = createTestFlow();
     // User requested cpu and memory that are below max allowed cpu and memory
     final Map<String, String> flowParam = new HashMap<>();
     final String cpuRequestedInFlowParam = "3";
@@ -195,9 +206,9 @@ public class KubernetesContainerizedImplTest {
     flowParam.put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_CPU_REQUEST, cpuRequestedInFlowParam);
     flowParam
         .put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST, memoryRequestedInFlowParam);
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam)
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam, flow)
         .equals(cpuRequestedInFlowParam));
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam)
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam, flow)
         .equals(memoryRequestedInFlowParam));
     // cpu and memory limit are determined dynamically based on requested cpu and memory
     String expectedCPULimit =
@@ -218,10 +229,10 @@ public class KubernetesContainerizedImplTest {
         greaterThanMaxCPURequestedInFlowParam);
     flowParam.put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST,
         greaterThanMaxMemoryRequestedInFlowParam);
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam)
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam, flow)
         .equals(MAX_ALLOWED_CPU));
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam)
-        .equals(MAX_ALLOWED_MEMORY));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam,
+        flow).equals(MAX_ALLOWED_MEMORY));
     // cpu and memory limit are determined dynamically based on requested cpu and memory
     expectedCPULimit =
         this.kubernetesContainerizedImpl
@@ -239,15 +250,15 @@ public class KubernetesContainerizedImplTest {
     flowParam.put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST,
         MemoryRequestedInFlowParam1);
     // 330 Mi = 0.33 Gi < max allowed memory 32 Gi, user requested memory should be used
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam)
-        .equals(MemoryRequestedInFlowParam1));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam,
+        flow).equals(MemoryRequestedInFlowParam1));
     final String MemoryRequestedInFlowParam2 = "0.1Ti";
     flowParam.put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST,
         MemoryRequestedInFlowParam2);
     // 0.1 Ti = 100 Gi > max allowed memory 32 Gi, user requested memory is replaced by max
     // allowed memory
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam)
-        .equals(MAX_ALLOWED_MEMORY));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam,
+        flow).equals(MAX_ALLOWED_MEMORY));
 
     // User requested memory that cannot be parsed or in a different type, e.g. mistakenly
     // requested CPU instead of memory
@@ -255,8 +266,8 @@ public class KubernetesContainerizedImplTest {
     flowParam.put(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST,
         MemoryRequestedInFlowParam3);
     // requested memory is set to value in props
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam)
-        .equals(MEMORY_REQUESTED_IN_PROPS));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam,
+        flow).equals(MEMORY_REQUESTED_IN_PROPS));
     // the memory request set by config should be used to get limit
     expectedMemoryLimit =
         this.kubernetesContainerizedImpl
@@ -267,15 +278,42 @@ public class KubernetesContainerizedImplTest {
 
   /**
    * This test is used to verify that if CPU and memory for a flow container is not requested in
-   * flow param but defined in system configuration then that is used.
+   * flow param but is obtained from VPA recommender.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testCPUAndMemoryRequestedFromVPARecommender() throws Exception {
+    final ExecutableFlow flow = createTestFlow();
+    final Map<String, String> flowParam = new HashMap<>();
+    // Fully ramp up VPA so VPA is allowed to give resource recommendations to all flows.
+    this.kubernetesContainerizedImpl.setVPARampUp(100);
+    when(vpaRecommender.getFlowContainerCPURequest(any(), any(), any(), any()))
+        .thenReturn(CPU_REQUESTED_IN_PROPS);
+    when(vpaRecommender.getFlowContainerMemoryRequest(any(), any(), any(), any()))
+        .thenReturn(MEMORY_REQUESTED_IN_PROPS);
+    this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam, flow);
+    verify(vpaRecommender, times(1)).getFlowContainerCPURequest(any(), any(), any(), any());
+    this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam, flow);
+    verify(vpaRecommender, times(1)).getFlowContainerMemoryRequest(any(), any(), any(),
+        any());
+    // Reset it back to 0 for other unit tests.
+    this.kubernetesContainerizedImpl.setVPARampUp(0);
+  }
+
+  /**
+   * This test is used to verify that if CPU and memory for a flow container is not requested
+   * either in flow param or VPA recommender but defined in system configuration then that is used.
    *
    * @throws Exception
    */
   @Test
   public void testCPUAndMemoryRequestedFromProperties() throws Exception {
+    final ExecutableFlow flow = createTestFlow();
     final Map<String, String> flowParam = new HashMap<>();
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam).equals(CPU_REQUESTED_IN_PROPS));
-    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam).equals(MEMORY_REQUESTED_IN_PROPS));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerCPURequest(flowParam, flow).equals(CPU_REQUESTED_IN_PROPS));
+    Assert.assertTrue(this.kubernetesContainerizedImpl.getFlowContainerMemoryRequest(flowParam,
+        flow).equals(MEMORY_REQUESTED_IN_PROPS));
     // cpu and memory limit are determined dynamically based on requested cpu and memory
     final String expectedCPULimit =
         this.kubernetesContainerizedImpl
@@ -374,9 +412,9 @@ public class KubernetesContainerizedImplTest {
     final VersionSet versionSet = this.kubernetesContainerizedImpl
         .fetchVersionSet(flow.getExecutionId(), flowParam, allImageTypes, flow);
     final V1PodSpec podSpec = this.kubernetesContainerizedImpl
-        .createPodSpec(flow.getExecutionId(), versionSet, jobTypes, dependencyTypes, flowParam);
+        .createPodSpec(flow, versionSet, jobTypes, dependencyTypes, flowParam);
     final V1ObjectMeta podMetadata =
-        this.kubernetesContainerizedImpl.createPodMetadata(flow.getExecutionId(), flowParam);
+        this.kubernetesContainerizedImpl.createPodMetadata(flow, flowParam);
     // Set custom labels and annotations
     ImmutableMap<String, String> annotations = ImmutableMap.of(
         "akey1", "aval1",

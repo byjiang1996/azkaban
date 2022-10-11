@@ -78,6 +78,9 @@ public class Flow {
   private String mailCreator = DefaultMailCreator.DEFAULT_MAIL_CREATOR;
   private ArrayList<String> errors;
   private Map<String, Object> metadata = new HashMap<>();
+  private String vpaObjectName;
+  private String CPURecommendation;
+  private String memoryRecommendation;
 
   private boolean isLayedOut = false;
   private boolean isEmbeddedFlow = false;
@@ -500,6 +503,30 @@ public class Flow {
 
   public void setMetadata(final Map<String, Object> metadata) {
     this.metadata = metadata;
+  }
+
+  public String getVPAObjectName() {
+    return this.vpaObjectName;
+  }
+
+  public void setVPAObjectName(final String vpaObjectName) {
+    this.vpaObjectName = vpaObjectName;
+  }
+
+  public String getCPURecommendation() {
+    return this.CPURecommendation;
+  }
+
+  public void setCPURecommendation(final String CPURecommendation) {
+    this.CPURecommendation = CPURecommendation;
+  }
+
+  public String getMemoryRecommendation() {
+    return this.memoryRecommendation;
+  }
+
+  public void setMemoryRecommendation(final String memoryRecommendation) {
+    this.memoryRecommendation = memoryRecommendation;
   }
 
   public Map<String, Node> getNodeMap() {

@@ -72,7 +72,7 @@ public class WatchUtils {
     requireNonNull(azkProps, "azkaban properties must not be null");
     final String namespace =
         azkProps.getString(ContainerizedDispatchManagerProperties.KUBERNETES_NAMESPACE);
-    final String labelSelector = KubernetesContainerizedImpl.getLabelSelector(azkProps);
+    final String labelSelector = KubernetesContainerizedImpl.getPodLabelSelector(azkProps);
     return new PodWatchParams(namespace, labelSelector);
   }
 }

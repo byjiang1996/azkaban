@@ -110,6 +110,7 @@ ext.deps = [
     junit                : 'junit:junit:4.12',
     kafkaLog4jAppender   : 'org.apache.kafka:kafka-log4j-appender:0.10.0.0',
     k8sClient            : 'io.kubernetes:client-java:15.0.1',
+    k8sClientExtended    : 'io.kubernetes:client-java-extended:15.0.1',
     k8sClientFluent      : 'io.kubernetes:client-java-api-fluent:15.0.1',
     log4j                : 'log4j:log4j:1.2.16',
     mail                 : 'com.sun.mail:javax.mail:1.6.2',

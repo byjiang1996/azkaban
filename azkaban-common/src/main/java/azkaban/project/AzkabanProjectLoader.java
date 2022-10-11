@@ -28,6 +28,7 @@ import azkaban.executor.ExecutionReference;
 import azkaban.executor.ExecutorLoader;
 import azkaban.executor.ExecutorManagerException;
 import azkaban.flow.Flow;
+import azkaban.flow.FlowRecommendation;
 import azkaban.metrics.CommonMetrics;
 import azkaban.project.FlowLoaderUtils.DirFilter;
 import azkaban.project.FlowLoaderUtils.SuffixFilter;
@@ -48,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.zip.ZipFile;
 import javax.inject.Inject;
@@ -272,6 +274,24 @@ class AzkabanProjectLoader {
       this.projectLoader.uploadFlows(project, newProjectVersion, flows.values());
       project.setFlows(flows);
 
+      Map<String, FlowRecommendation> flowRecommendations =
+          getFlowRecommendationMapFromList(this.projectLoader.fetchAllProjectFlowRecommendations(project));
+
+      List<String> flowRecommendationsToCreate = flowRecommendations
+          .keySet()
+          .stream()
+          .filter(flowId -> !flows.containsKey(flowId))
+          .collect(Collectors.toList());
+
+      if (flowRecommendationsToCreate.isEmpty()) {
+        project.setFlowRecommendations(flowRecommendations);
+      } else {
+        flowRecommendationsToCreate
+            .forEach(flowId -> this.projectLoader.createFlowRecommendation(project.getId(), flowId));
+        project.setFlowRecommendations(
+            getFlowRecommendationMapFromList(this.projectLoader.fetchAllProjectFlowRecommendations(project)));
+      }
+
       // Set the project version before upload of project files happens so that the files use
       // new version.
       project.setVersion(newProjectVersion);
@@ -298,6 +318,12 @@ class AzkabanProjectLoader {
       this.projectLoader.postEvent(project, EventType.UPLOADED, uploader.getUserId(),
           "Uploaded project files zip " + archive.getName());
     }
+  }
+
+  private static Map<String, FlowRecommendation> getFlowRecommendationMapFromList(List<FlowRecommendation> flowRecommendations) {
+      return flowRecommendations
+          .stream()
+          .collect(Collectors.toMap(FlowRecommendation::getFlowId, Function.identity()));
   }
 
   private void uploadFlowFilesRecursively(final File projectDir, final Project project, final int
