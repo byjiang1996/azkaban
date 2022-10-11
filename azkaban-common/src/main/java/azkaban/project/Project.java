@@ -55,7 +55,8 @@ public class Project extends EventHandler {
   private String lastModifiedUser;
   private String source;
   private Map<String, Flow> flows = new HashMap<>();
-  private Map<String, FlowRecommendation> flowRecommendations = new HashMap<>();
+  // flowRecommendations map shouldn't be ImmutableMap.
+  private HashMap<String, FlowRecommendation> flowRecommendations = new HashMap<>();
   private Map<String, Object> metadata = new HashMap<>();
   private static final Logger logger = LoggerFactory.getLogger(Project.class);
   // Added event listener for sending project events
@@ -166,18 +167,9 @@ public class Project extends EventHandler {
     return this.flowRecommendations;
   }
 
-  public List<FlowRecommendation> getFlowRecommendations() {
-    List<FlowRecommendation> retFlowRecommendations = null;
-    if (this.flows != null) {
-      retFlowRecommendations = new ArrayList<>(this.flowRecommendations.values());
-    } else {
-      retFlowRecommendations = new ArrayList<>();
-    }
-    return retFlowRecommendations;
-  }
-
   public void setFlowRecommendations(final Map<String, FlowRecommendation> flowRecommendations) {
-    this.flowRecommendations = ImmutableMap.copyOf(flowRecommendations);
+    this.flowRecommendations.clear();
+    this.flowRecommendations.putAll(flowRecommendations);
   }
 
   public Permission getCollectivePermission(final User user) {

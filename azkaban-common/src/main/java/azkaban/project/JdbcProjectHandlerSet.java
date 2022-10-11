@@ -200,11 +200,12 @@ class JdbcProjectHandlerSet {
 
     public static String SELECT_PROJECT_FLOW_RECOMMENDATION =
         "SELECT id, project_id, flow_id, cpu_recommendation, memory_recommendation, "
-            + "disk_recommendation FROM project_flows WHERE project_id=? AND flow_id=?";
+            + "disk_recommendation FROM project_flow_recommendations WHERE project_id=? AND "
+            + "flow_id=?";
 
     public static String SELECT_ALL_PROJECT_FLOW_RECOMMENDATIONS =
         "SELECT id, project_id, flow_id, cpu_recommendation, memory_recommendation, "
-            + "disk_recommendation FROM project_flows WHERE project_id=?";
+            + "disk_recommendation FROM project_flow_recommendations WHERE project_id=?";
 
     @Override
     public List<FlowRecommendation> handle(final ResultSet rs) throws SQLException {

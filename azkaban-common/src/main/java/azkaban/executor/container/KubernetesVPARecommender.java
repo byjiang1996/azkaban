@@ -6,12 +6,16 @@ import io.kubernetes.autoscaling.models.V1VerticalPodAutoscaler;
 import io.kubernetes.autoscaling.models.V1VerticalPodAutoscalerSpec;
 import io.kubernetes.autoscaling.models.V1VerticalPodAutoscalerSpecResourcePolicy;
 import io.kubernetes.autoscaling.models.V1VerticalPodAutoscalerSpecResourcePolicyContainerPolicies;
+import io.kubernetes.autoscaling.models.V1VerticalPodAutoscalerSpecUpdatePolicy;
+import io.kubernetes.autoscaling.models.V1VerticalPodAutoscalerSpecUpdatePolicy.UpdateModeEnum;
 import io.kubernetes.client.custom.Quantity;
+import io.kubernetes.client.custom.QuantityFormatException;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.models.V1LabelSelector;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -47,8 +51,9 @@ public class KubernetesVPARecommender implements VPARecommender {
     this.kubernetesVPARecommenderV1Api = new KubernetesVPARecommenderV1Api(client);
   }
 
-  private void createVPAObject(String namespace, String flowVPALabelName, String flowVPAName,
-      String flowContainerName, String maxAllowedCPU, String maxAllowedMemory) throws ExecutorManagerException {
+  private void createVPAObject(final String namespace, final String flowVPALabelName,
+      final String flowVPAName, final String flowContainerName, final String maxAllowedCPU,
+      final String maxAllowedMemory) throws ExecutorManagerException {
     try {
       V1VerticalPodAutoscaler vpaObject = new V1VerticalPodAutoscaler()
           .apiVersion(VPA_API_VERSION)
@@ -65,6 +70,7 @@ public class KubernetesVPARecommender implements VPARecommender {
                               .of(VPA_CPU_KEY, maxAllowedCPU, VPA_MEMORY_KEY, maxAllowedMemory))
                       ))
               )
+              .updatePolicy(new V1VerticalPodAutoscalerSpecUpdatePolicy().updateMode(UpdateModeEnum.OFF))
           );
 
       kubernetesVPARecommenderV1Api.createNamespacedVPA(namespace, vpaObject);
@@ -102,12 +108,18 @@ public class KubernetesVPARecommender implements VPARecommender {
         Quantity rawMemoryRecommendationQuantity =
             new Quantity((String) recommendation.get(VPA_MEMORY_KEY));
 
-        Quantity cpuRecommendationQuantity =
-            new Quantity(rawCpuRecommendationQuantity.getNumber().multiply(new BigDecimal(cpuRecommendationMultiplier)),
-                rawCpuRecommendationQuantity.getFormat());
-        Quantity memoryRecommendationQuantity =
-            new Quantity(rawMemoryRecommendationQuantity.getNumber().multiply(new BigDecimal(memoryRecommendationMultiplier)),
-                rawMemoryRecommendationQuantity.getFormat());
+        // Kubernetes doesn't allow you to specify CPU resources with a precision finer than 1m
+        String cpuRecommendationMilliUnit =
+            rawCpuRecommendationQuantity.getNumber().multiply(new BigDecimal(cpuRecommendationMultiplier * 1000)).toBigInteger().toString();
+        // Better to specify memory resources with a precision as fine as 1 unit
+        String memoryRecommendationUnit =
+            rawMemoryRecommendationQuantity.getNumber().multiply(new BigDecimal(memoryRecommendationMultiplier)).toBigInteger().toString();
+
+        Quantity cpuRecommendationQuantity = new Quantity(cpuRecommendationMilliUnit + "m");
+        Quantity memoryRecommendationQuantity = new Quantity(memoryRecommendationUnit);
+
+        logger.info("Raw recommendation quantities: " + rawCpuRecommendationQuantity.toSuffixedString() + ", " + rawMemoryRecommendationQuantity.toSuffixedString());
+        logger.info("Converted recommendation quantities: " + cpuRecommendationQuantity.getNumber() + cpuRecommendationQuantity.getFormat() + ", " + memoryRecommendationQuantity.getNumber() + memoryRecommendationQuantity.getFormat());
 
         return new VPARecommendation(
             cpuRecommendationQuantity.getNumber().compareTo(maxAllowedCPUQuantity.getNumber()) < 0
@@ -131,7 +143,9 @@ public class KubernetesVPARecommender implements VPARecommender {
       } catch (NullPointerException | NoSuchElementException e) {
         logger.warn("VPA object for flowVPAName " + flowVPAName + " is found but recommendation has "
             + "not been generated yet", e);
-        return maxAllowedLimits;
+        // It is highly possible that this flow completes too fast to be captured by VPA.
+        // Therefore, do not apply VPA recommendation to this flow.
+        throw e;
       }
     } catch (Exception e) {
       throw new ExecutorManagerException(e);

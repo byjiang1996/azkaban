@@ -81,14 +81,16 @@ public abstract class AbstractProjectCache implements ProjectCache {
       // Load the flows into the project objects
       for (final Map.Entry<Project, List<FlowRecommendation>> entry : projectToFlowRecommendations.entrySet()) {
         final Project project = entry.getKey();
-        final List<FlowRecommendation> flowRecommendations = entry.getValue();
+        synchronized (project) {
+          final List<FlowRecommendation> flowRecommendations = entry.getValue();
 
-        final Map<String, FlowRecommendation> flowRecommendationMap = new HashMap<>();
-        for (final FlowRecommendation flowRecommendation : flowRecommendations) {
-          flowRecommendationMap.put(flowRecommendation.getFlowId(), flowRecommendation);
+          final Map<String, FlowRecommendation> flowRecommendationMap = new HashMap<>();
+          for (final FlowRecommendation flowRecommendation : flowRecommendations) {
+            flowRecommendationMap.put(flowRecommendation.getFlowId(), flowRecommendation);
+          }
+
+          project.setFlowRecommendations(flowRecommendationMap);
         }
-
-        project.setFlowRecommendations(flowRecommendationMap);
       }
     } catch (final ProjectManagerException e) {
       logger.error("Could not load projects flow recommendations from store.", e);

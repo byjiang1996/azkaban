@@ -274,22 +274,19 @@ class AzkabanProjectLoader {
       this.projectLoader.uploadFlows(project, newProjectVersion, flows.values());
       project.setFlows(flows);
 
-      Map<String, FlowRecommendation> flowRecommendations =
-          getFlowRecommendationMapFromList(this.projectLoader.fetchAllProjectFlowRecommendations(project));
+      final Map<String, FlowRecommendation> flowRecommendationMap =
+          project.getFlowRecommendationMap();
 
-      List<String> flowRecommendationsToCreate = flowRecommendations
+      final List<String> flowRecommendationsToCreate = flowRecommendationMap
           .keySet()
           .stream()
           .filter(flowId -> !flows.containsKey(flowId))
           .collect(Collectors.toList());
 
-      if (flowRecommendationsToCreate.isEmpty()) {
-        project.setFlowRecommendations(flowRecommendations);
-      } else {
-        flowRecommendationsToCreate
-            .forEach(flowId -> this.projectLoader.createFlowRecommendation(project.getId(), flowId));
-        project.setFlowRecommendations(
-            getFlowRecommendationMapFromList(this.projectLoader.fetchAllProjectFlowRecommendations(project)));
+      if (!flowRecommendationsToCreate.isEmpty()) {
+        flowRecommendationsToCreate.forEach(flowId ->
+                flowRecommendationMap.put(flowId, this.projectLoader.createFlowRecommendation(project.getId(), flowId))
+            );
       }
 
       // Set the project version before upload of project files happens so that the files use
@@ -318,12 +315,6 @@ class AzkabanProjectLoader {
       this.projectLoader.postEvent(project, EventType.UPLOADED, uploader.getUserId(),
           "Uploaded project files zip " + archive.getName());
     }
-  }
-
-  private static Map<String, FlowRecommendation> getFlowRecommendationMapFromList(List<FlowRecommendation> flowRecommendations) {
-      return flowRecommendations
-          .stream()
-          .collect(Collectors.toMap(FlowRecommendation::getFlowId, Function.identity()));
   }
 
   private void uploadFlowFilesRecursively(final File projectDir, final Project project, final int

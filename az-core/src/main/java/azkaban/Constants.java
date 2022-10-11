@@ -685,6 +685,8 @@ public class Constants {
         KUBERNETES_FLOW_CONTAINER_PREFIX + "cpu.recommendation.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_CPU_LIMIT_MULTIPLIER =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "cpu.limit.multiplier";
+    public static final String KUBERNETES_FLOW_CONTAINER_MIN_ALLOWED_CPU =
+        KUBERNETES_FLOW_CONTAINER_PREFIX + "min.allowed.cpu";
     public static final String KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_CPU =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "max.allowed.cpu";
     public static final String KUBERNETES_FLOW_CONTAINER_CPU_REQUEST =
@@ -694,6 +696,8 @@ public class Constants {
         KUBERNETES_FLOW_CONTAINER_PREFIX + "memory.recommendation.multiplier";
     public static final String KUBERNETES_FLOW_CONTAINER_MEMORY_LIMIT_MULTIPLIER =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "memory.limit.multiplier";
+    public static final String KUBERNETES_FLOW_CONTAINER_MIN_ALLOWED_MEMORY =
+        KUBERNETES_FLOW_CONTAINER_PREFIX + "min.allowed.memory";
     public static final String KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_MEMORY =
         KUBERNETES_FLOW_CONTAINER_PREFIX + "max.allowed.memory";
     public static final String KUBERNETES_FLOW_CONTAINER_MEMORY_REQUEST =

@@ -11,5 +11,5 @@ CREATE TABLE project_flow_recommendations (
 CREATE INDEX flow_recommendation_project
   ON project_flow_recommendations (project_id);
 
-CREATE INDEX flow_recommendation_project_flow
+CREATE UNIQUE INDEX flow_recommendation_project_flow
   ON project_flow_recommendations (project_id, flow_id);

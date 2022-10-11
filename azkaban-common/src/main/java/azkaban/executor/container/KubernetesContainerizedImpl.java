@@ -109,11 +109,14 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   public static final String DEFAULT_SERVICE_NAME_PREFIX = "fc-svc";
   public static final String DEFAULT_VPA_NAME_PREFIX = "fc-vpa";
   public static final String DEFAULT_CLUSTER_NAME = "azkaban";
+  public static final String DEFAULT_MIN_CPU = "500m";
+  public static final String DEFAULT_MIN_MEMORY = "4Gi";
   public static final String DEFAULT_MAX_CPU = "8";
   public static final String DEFAULT_MAX_MEMORY = "64Gi";
   public static final String DEFAULT_CPU_REQUEST = "1";
   public static final String DEFAULT_MEMORY_REQUEST = "2Gi";
-  public static final double DEFAULT_CPU_RECOMMENDATION_MULTIPLIER = 1;
+  // Expected: 80% usage for buffering
+  public static final double DEFAULT_CPU_RECOMMENDATION_MULTIPLIER = 1.25;
   public static final int DEFAULT_CPU_LIMIT_MULTIPLIER = 1;
   // Expected: 70% usage for buffering
   public static final double DEFAULT_MEMORY_RECOMMENDATION_MULTIPLIER = 1.4;
@@ -159,11 +162,13 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   private int vpaRampUp;
   private final double cpuRecommendationMultiplier;
   private int cpuLimitMultiplier;
-  private final String cpuRequest;
+  private final String defaultCpuRequest;
+  private final String minAllowedCPU;
   private final String maxAllowedCPU;
   private final double memoryRecommendationMultiplier;
   private int memoryLimitMultiplier;
-  private final String memoryRequest;
+  private final String defaultMemoryRequest;
+  private final String minAllowedMemory;
   private final String maxAllowedMemory;
   private final String diskRequest;
   private final String maxAllowedDisk;
@@ -241,7 +246,7 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
     this.vpaRampUp =
         this.azkProps.getInt(ContainerizedDispatchManagerProperties.KUBERNETES_VERTICAL_POD_AUTOSCALER_RAMPUP,
         100);
-    this.cpuRequest = this.azkProps
+    this.defaultCpuRequest = this.azkProps
         .getString(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_CPU_REQUEST,
             DEFAULT_CPU_REQUEST);
     this.cpuLimitMultiplier = this.azkProps
@@ -250,10 +255,13 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
     this.cpuRecommendationMultiplier = this.azkProps
         .getDouble(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_CPU_RECOMMENDATION_MULTIPLIER,
             DEFAULT_CPU_RECOMMENDATION_MULTIPLIER);
+    this.minAllowedCPU = this.azkProps
+        .getString(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MIN_ALLOWED_CPU
+            , DEFAULT_MIN_CPU);
     this.maxAllowedCPU = this.azkProps
         .getString(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_CPU
             , DEFAULT_MAX_CPU);
-    this.memoryRequest = this.azkProps.getString(ContainerizedDispatchManagerProperties.
+    this.defaultMemoryRequest = this.azkProps.getString(ContainerizedDispatchManagerProperties.
             KUBERNETES_FLOW_CONTAINER_MEMORY_REQUEST, DEFAULT_MEMORY_REQUEST);
     this.memoryRecommendationMultiplier = this.azkProps
         .getDouble(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MEMORY_RECOMMENDATION_MULTIPLIER,
@@ -261,6 +269,9 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
     this.memoryLimitMultiplier = this.azkProps
         .getInt(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MEMORY_LIMIT_MULTIPLIER,
             DEFAULT_MEMORY_LIMIT_MULTIPLIER);
+    this.minAllowedMemory = this.azkProps
+        .getString(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MIN_ALLOWED_MEMORY
+            , DEFAULT_MIN_MEMORY);
     this.maxAllowedMemory = this.azkProps
         .getString(ContainerizedDispatchManagerProperties.KUBERNETES_FLOW_CONTAINER_MAX_ALLOWED_MEMORY,
             DEFAULT_MAX_MEMORY);
@@ -680,12 +691,12 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
     final String flowContainerCPURequest = getFlowContainerCPURequest(flowParam,
         vpaRecommendation.getCpuRecommendation());
     final String flowContainerCPULimit =
-        getResourceLimitFromResourceRequest(flowContainerCPURequest, this.cpuRequest,
+        getResourceLimitFromResourceRequest(flowContainerCPURequest, this.defaultCpuRequest,
             this.cpuLimitMultiplier);
     final String flowContainerMemoryRequest = getFlowContainerMemoryRequest(flowParam,
         vpaRecommendation.getMemoryRecommendation());
     final String flowContainerMemoryLimit = getResourceLimitFromResourceRequest(
-        flowContainerMemoryRequest, this.memoryRequest,
+        flowContainerMemoryRequest, this.defaultMemoryRequest,
         this.memoryLimitMultiplier);
     final String flowContainerDiskRequest = getFlowContainerDiskRequest(flowParam);
     logger.info("Creating pod for execution-id: " + executionId);
@@ -738,40 +749,49 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   @VisibleForTesting
   VPARecommendation getFlowContainerRecommendedRequests(final ExecutableFlow executableFlow,
       final FlowRecommendation flowRecommendation) {
-    VPARecommendation vpaRecommendation = null;
-    if (IsVPAEnabledForFlow(executableFlow)) {
-      try {
-        // Top-down approach to apply maxAllowedMemory first and then find the optimal memory request
-        vpaRecommendation =
-            this.vpaRecommender.getFlowContainerRecommendedRequests(this.namespace,
-                FLOW_VPA_LABEL_NAME, this.getVPAName(flowRecommendation), this.flowContainerName,
-                this.cpuRecommendationMultiplier, this.memoryRecommendationMultiplier,
-                this.maxAllowedCPU, this.maxAllowedMemory);
+    final VPARecommendation emptyVpaRecommendation = new VPARecommendation(null, null);
+    try {
+      // Top-down approach to apply maxAllowedMemory first and then find the optimal memory request
+      final VPARecommendation vpaRecommendation =
+          this.vpaRecommender.getFlowContainerRecommendedRequests(this.namespace,
+              FLOW_VPA_LABEL_NAME, this.getVPAName(flowRecommendation), this.flowContainerName,
+              this.cpuRecommendationMultiplier, this.memoryRecommendationMultiplier,
+              this.maxAllowedCPU, this.maxAllowedMemory);
 
-        if (!vpaRecommendation.getCpuRecommendation().equals(flowRecommendation.getCpuRecommendation()) ||
-            !vpaRecommendation.getMemoryRecommendation().equals(flowRecommendation.getMemoryRecommendation())) {
+      // Migration/Rollout purpose: set up VPA objects even though the feature is not ramped up.
+      if (!IsVPAEnabledForFlow(executableFlow)) {
+        return emptyVpaRecommendation;
+      }
+
+      if (!vpaRecommendation.getCpuRecommendation().equals(flowRecommendation.getCpuRecommendation()) ||
+          !vpaRecommendation.getMemoryRecommendation().equals(flowRecommendation.getMemoryRecommendation())) {
+        // No need to record max allowed resources into DB.
+        // Instead, leave DB recommendations empty for the flows that complete too fast to be captured/by VPA.
+        if (!vpaRecommendation.getCpuRecommendation().equals(maxAllowedCPU) || !vpaRecommendation.getMemoryRecommendation().equals(maxAllowedMemory)) {
           flowRecommendation.setCpuRecommendation(vpaRecommendation.getCpuRecommendation());
           flowRecommendation.setMemoryRecommendation(vpaRecommendation.getMemoryRecommendation());
           // We may choose to update DB periodically instead of every time.
           this.projectManager.updateFlowRecommendation(flowRecommendation);
         }
-      } catch (Exception e) {
-        logger.error("Cannot apply resource recommendation from VPA for execId " + executableFlow
-            .getExecutionId(), e);
-        // It is fine if cpu recommendation or memory recommendation is null here.
-        if (flowRecommendation != null) {
-          return new VPARecommendation(flowRecommendation.getCpuRecommendation(),
-              flowRecommendation.getMemoryRecommendation());
-        }
+      }
+
+      return vpaRecommendation;
+    } catch (Exception e) {
+      logger.error("Cannot apply resource recommendation from VPA for execId " + executableFlow
+          .getExecutionId(), e);
+      // It is fine if cpu recommendation or memory recommendation is null here.
+      if (flowRecommendation != null) {
+        return new VPARecommendation(flowRecommendation.getCpuRecommendation(),
+            flowRecommendation.getMemoryRecommendation());
       }
     }
 
-    return vpaRecommendation;
+    return emptyVpaRecommendation;
   }
 
   /**
    * This method is used to get cpu request for a flow container. Precedence is defined below. a)
-   * Use max(CPU request set in flow parameter constrained by max allowed cpu set in config,
+   * Use max(CPU request set in flow parameter constrained by min&max allowed cpu set in config,
    * CPU request recommendation value from VPA) b) Use cpu request set in system properties or
    * default which is set in @cpuRequest.
    *
@@ -782,39 +802,38 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   @VisibleForTesting
   String getFlowContainerCPURequest(final Map<String, String> flowParam,
       final String CPURequestFromVPA) {
+    String cpuRequest = getRawFlowContainerCPURequest(flowParam, CPURequestFromVPA);
+    if (compareResources(cpuRequest, this.minAllowedCPU) <= 0) {
+      return this.minAllowedCPU;
+    } else if (compareResources(cpuRequest, this.maxAllowedCPU) >= 0) {
+      return this.maxAllowedCPU;
+    }
+    return cpuRequest;
+  }
+
+  private String getRawFlowContainerCPURequest(final Map<String, String> flowParam,
+      final String CPURequestFromVPA) {
+    String cpuRequest = null;
     if (flowParam != null && !flowParam.isEmpty() && flowParam
         .containsKey(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_CPU_REQUEST)) {
-      String userCPURequest =
-          flowParam.get(Constants.FlowParameters.FLOW_PARAM_FLOW_CONTAINER_CPU_REQUEST);
-      int resourceCompare = compareResources(this.maxAllowedCPU, userCPURequest);
-      if (resourceCompare < 0) { // user requested cpu exceeds max allowed cpu
-        userCPURequest = this.maxAllowedCPU;
-      } else if (resourceCompare == 0) {// if user requested memory has an parse error, or resource
-        // type is not correct, cpu request from VPA should be used
-        userCPURequest = CPURequestFromVPA;
+      cpuRequest = flowParam.get(Constants.FlowParameters.FLOW_PARAM_FLOW_CONTAINER_CPU_REQUEST);
 
-        if (CPURequestFromVPA == null) {
-          return this.cpuRequest;
-        }
-      }
-
-      try {
-        // Take max of the two
-        Quantity cpuRequestFromVPAQuantity = new Quantity(CPURequestFromVPA);
-        Quantity userCPURequestQuantity = new Quantity(userCPURequest);
-        return cpuRequestFromVPAQuantity.getNumber().compareTo(userCPURequestQuantity.getNumber()) > 0
-            ? CPURequestFromVPA : userCPURequest;
-      } catch (Exception e) {
-        logger.error("Error when parsing cpu request from string to quantity.", e);
-        return userCPURequest;
+      if (!isValidResource(cpuRequest)) {
+        cpuRequest = null;
       }
     }
-    return this.cpuRequest;
+
+    if (CPURequestFromVPA != null && isValidResource(CPURequestFromVPA) && (cpuRequest == null ||
+        compareResources(cpuRequest, CPURequestFromVPA) < 0)) {
+      cpuRequest = CPURequestFromVPA;
+    }
+
+    return cpuRequest != null ? cpuRequest : this.defaultCpuRequest;
   }
 
   /**
    * This method is used to get memory request for a flow container. Precedence is defined below. a)
-   * Use max(memory request set in flow parameter constrained by max allowed memory set in
+   * Use max(memory request set in flow parameter constrained by min&max allowed memory set in
    * config, memory request recommendation value from VPA) b) Use memory request set in system
    * properties or default which is set in @memoryRequest
    *
@@ -825,34 +844,34 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   @VisibleForTesting
   String getFlowContainerMemoryRequest(final Map<String, String> flowParam,
       final String memoryRequestFromVPA) {
+    String memoryRequest = getRawFlowContainerMemoryRequest(flowParam, memoryRequestFromVPA);
+    if (compareResources(memoryRequest, this.minAllowedMemory) <= 0) {
+      return this.minAllowedMemory;
+    } else if (compareResources(memoryRequest, this.maxAllowedMemory) >= 0) {
+      return this.maxAllowedMemory;
+    }
+    return memoryRequest;
+  }
+
+  private String getRawFlowContainerMemoryRequest(final Map<String, String> flowParam,
+      final String memoryRequestFromVPA) {
+    String memoryRequest = null;
     if (flowParam != null && !flowParam.isEmpty() && flowParam
         .containsKey(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST)) {
-      String userMemoryRequest =
-          flowParam.get(FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST);
-      int resourceCompare = compareResources(this.maxAllowedMemory, userMemoryRequest);
-      if (resourceCompare < 0) { // user requested memory exceeds max allowed memory
-        userMemoryRequest = this.maxAllowedMemory;
-      } else if (resourceCompare == 0) {// if user requested memory has an parse error, or resource
-        // type is not correct, memory request set in the config should be used
-        userMemoryRequest = this.memoryRequest;
+      memoryRequest =
+          flowParam.get(Constants.FlowParameters.FLOW_PARAM_FLOW_CONTAINER_MEMORY_REQUEST);
 
-        if (memoryRequestFromVPA == null) {
-          return this.memoryRequest;
-        }
-      }
-
-      try {
-        // Take max of the two
-        Quantity memoryRequestFromVPAQuantity = new Quantity(memoryRequestFromVPA);
-        Quantity userMemoryRequestQuantity = new Quantity(userMemoryRequest);
-        return memoryRequestFromVPAQuantity.getNumber().compareTo(userMemoryRequestQuantity.getNumber()) > 0
-            ? memoryRequestFromVPA : userMemoryRequest;
-      } catch (Exception e) {
-        logger.error("Error when parsing memory request from string to quantity.", e);
-        return userMemoryRequest;
+      if (!isValidResource(memoryRequest)) {
+        memoryRequest = null;
       }
     }
-    return this.memoryRequest;
+
+    if (memoryRequestFromVPA != null && isValidResource(memoryRequestFromVPA) && (memoryRequest == null ||
+        compareResources(memoryRequest, memoryRequestFromVPA) < 0)) {
+      memoryRequest = memoryRequestFromVPA;
+    }
+
+    return memoryRequest != null ? memoryRequest : this.defaultMemoryRequest;
   }
 
   /**
@@ -895,19 +914,28 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
    * @param resource2
    * @return
    */
-  private int compareResources (final String resource1, final String resource2) {
+  private static int compareResources(final String resource1, final String resource2) {
     try {
       final Quantity quantity1 = new Quantity(resource1), quantity2 = new Quantity(resource2);
       if (quantity1.getFormat() == quantity2.getFormat()) {
         return quantity1.getNumber().compareTo(quantity2.getNumber()) < 0 ? -1 : 1;
       }
-    } catch (final QuantityFormatException qe) { // only user requested resource in flow
+    } catch (final Exception e) { // only user requested resource in flow
       // parameter could result in exception
-      logger.error("QuantityFormatException while parsing user requested resource: " + resource2);
+      logger.error("Exception while parsing requested resource: " + resource1 + "," + resource2);
     }
     // Resources cannot be compared, e.g. resources are different (cpu vs. memory) or
     // exception encountered when parsing resource string
     return 0;
+  }
+
+  private static boolean isValidResource(final String resource) {
+    try {
+      new Quantity(resource);
+    } catch (final Exception e) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -1038,15 +1066,23 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
   private void createPod(final int executionId) throws ExecutorManagerException {
     // Fetch execution flow from execution Id.
     final ExecutableFlow flow = this.executorLoader.fetchExecutableFlow(executionId);
+    FlowRecommendation flowRecommendation;
     // Fetch flow recommendation for the given execution flow
-    FlowRecommendation flowRecommendation =
-        this.projectManager.getProject(flow.getProjectId()).getFlowRecommendation(flow.getFlowId());
-    // Migration: for all old flows, flow recommendation hasn't been generated yet in the DB
-    if (flowRecommendation == null) {
-      flowRecommendation =
-          this.projectManager.createFlowRecommendation(flow.getProjectId(),
-              flow.getFlowId());
+    Project project = this.projectManager.getProject(flow.getProjectId());
+    synchronized (project) {
+      final Map<String, FlowRecommendation> flowRecommendationMap =
+          project.getFlowRecommendationMap();
+      flowRecommendation = flowRecommendationMap.get(flow.getFlowId());
+      // Migration: for all old flows, flow recommendation hasn't been generated yet in the DB
+      if (flowRecommendation == null) {
+        flowRecommendation =
+            this.projectManager.createFlowRecommendation(flow.getProjectId(),
+                flow.getFlowId());
+
+        flowRecommendationMap.put(flow.getFlowId(), flowRecommendation);
+      }
     }
+
 
     // Step 1: Fetch set of jobTypes for a flow from executionId
     final TreeSet<String> jobTypes = ContainerImplUtils.getJobTypesForFlow(flow);
@@ -1234,7 +1270,6 @@ public class KubernetesContainerizedImpl extends EventHandler implements Contain
    */
   private boolean IsVPAEnabledForFlow(ExecutableFlow executableFlow) {
     int flowNameHashValMapping = ContainerImplUtils.getFlowNameHashValMapping(executableFlow);
-
     return flowNameHashValMapping <= this.vpaRampUp;
   }
 
