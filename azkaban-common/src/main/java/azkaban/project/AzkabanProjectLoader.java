@@ -28,6 +28,7 @@ import azkaban.executor.ExecutionReference;
 import azkaban.executor.ExecutorLoader;
 import azkaban.executor.ExecutorManagerException;
 import azkaban.flow.Flow;
+import azkaban.flow.FlowRecommendation;
 import azkaban.metrics.CommonMetrics;
 import azkaban.project.FlowLoaderUtils.DirFilter;
 import azkaban.project.FlowLoaderUtils.SuffixFilter;
@@ -271,6 +272,21 @@ class AzkabanProjectLoader {
       log.info("Uploading flow to db for project " + archive.getName());
       this.projectLoader.uploadFlows(project, newProjectVersion, flows.values());
       project.setFlows(flows);
+
+      final Map<String, FlowRecommendation> flowRecommendationMap =
+          project.getFlowRecommendationMap();
+
+      final List<String> flowRecommendationsToCreate = flows
+          .keySet()
+          .stream()
+          .filter(flowId -> !flowRecommendationMap.containsKey(flowId))
+          .collect(Collectors.toList());
+
+      if (!flowRecommendationsToCreate.isEmpty()) {
+        flowRecommendationsToCreate.forEach(flowId ->
+                flowRecommendationMap.put(flowId, this.projectLoader.createFlowRecommendation(project.getId(), flowId))
+            );
+      }
 
       // Set the project version before upload of project files happens so that the files use
       // new version.
