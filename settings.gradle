@@ -17,7 +17,7 @@
 rootProject.name = 'azkaban'
 
 include 'az-core'
-include 'az-exec-util'
+//include 'az-exec-util'
 include 'azkaban-spi'
 include 'azkaban-db'
 include 'azkaban-common'

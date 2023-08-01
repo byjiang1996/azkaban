@@ -1,0 +1,11 @@
+// this file will be copied to `/azkaban` dir and will be appied in `/azkaban/build.gradle`.
+
+// apply the li-azkaabn-mp root level "adapt.gradle" file to adapt the OS project into a LI multiproduct
+apply from: '../adapt.gradle'
+
+if (project.hasProperty('overrideBuildEnvironment')) {
+    //The property is automatically passed to the Gradle build when the project is built at LinkedIn
+    //The property contains the file path to a script plugin that 'adapts' this OS project to LinkedIn
+    //In order to adapt the project, we need to apply this script plugin:
+    apply from: project.overrideBuildEnvironment
+}

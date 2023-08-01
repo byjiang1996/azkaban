@@ -67,19 +67,11 @@ public final class UserUtils {
         continue;
       }
 
-      try {
-        final Path dir = Paths.get(fileName).getParent();
-        if (!dirToFilesMap.containsKey(dir)) {
-          // There is no entry for this directory, create a watchkey
-          final WatchKey watchKey = watcher.register(dir);
-          keys.put(watchKey, dir);
-        }
-        // Add the config file to dir map
-        dirToFilesMap.put(dir, fileName);
-      } catch (final IOException e) {
-        // Ignore the IOException
-        log.warn("IOException while setting up watch on conf " + fileName + ". ", e);
+      final Path dir = Paths.get(fileName).getParent();
+      if (!dirToFilesMap.containsKey(dir)) {
       }
+      // Add the config file to dir map
+      dirToFilesMap.put(dir, fileName);
     }
 
     // Return if WatchService is not initialized

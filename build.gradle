@@ -27,27 +27,12 @@ buildscript {
 }
 
 plugins {
-  id 'com.gradle.build-scan' version '3.2'
   id 'com.github.kt3k.coveralls' version '2.6.3'
   id 'jacoco'
   id 'idea'
 }
 
-// https://docs.gradle.com/enterprise/gradle-plugin/#connecting_to_scans_gradle_com
-gradleEnterprise {
-  buildScan {
-    termsOfServiceUrl = "https://gradle.com/terms-of-service"
-    termsOfServiceAgree = "yes"
-  }
-}
-
 apply plugin: 'com.cinnober.gradle.semver-git'
-
-apply plugin: 'compare-gradle-builds'
-
-compareGradleBuilds {
-  targetBuild.gradleVersion = "4.0"
-}
 
 allprojects {
   apply plugin: 'jacoco'
@@ -148,19 +133,17 @@ ext.deps = [
 
 subprojects {
   apply plugin: 'java'
-  apply plugin: 'net.ltgt.errorprone'
 
   // Set the same version for all sub-projects to root project version
   version = rootProject.version
 
-  configurations.errorprone {
-    dependencies {
-      errorprone 'com.google.errorprone:error_prone_core:2.1.0'
-    }
+  tasks.withType(JavaCompile) {
+    options.compilerArgs += "-Xlint:deprecation"
   }
 
   plugins.withType(JavaPlugin) {
     sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 
     /*
      TODO remove afterEvaluate block
@@ -216,12 +199,6 @@ subprojects {
   }
 
   /**
-   * Terminate compilation if warnings occur.*/
-  tasks.withType(JavaCompile) {
-    options.compilerArgs += ["-Werror"]
-  }
-
-  /**
    * Print test execution summary when informational logging is enabled.*/
   test {
     testLogging {
@@ -261,36 +238,4 @@ if (System.env.TRAVIS == 'true') {
   }
 }
 
-def publishedProjects = subprojects.findAll()
-
-// Aggregate all subproject reports into one.
-task jacocoAggregateReport(type: JacocoReport, group: 'Coverage reports') {
-  description = 'Generates an aggregate report from all subprojects'
-
-  dependsOn(publishedProjects.test)
-
-  // JacocoReport-type task requires users to specify which classes to be covered
-  // See details in
-  // https://docs.gradle.org/current/dsl/org.gradle.testing.jacoco.tasks.JacocoReport.html
-  sourceDirectories = files(publishedProjects.sourceSets.main.allSource.srcDirs)
-  classDirectories = files(publishedProjects.sourceSets.main.output)
-  executionData = files(publishedProjects.jacocoTestReport.executionData)
-
-  doFirst {
-    executionData = files(executionData.findAll { it.exists() })
-  }
-
-  reports {
-    html.enabled = true // human readable
-    xml.enabled = true // required by coveralls
-  }
-}
-
-coveralls {
-  sourceDirs = publishedProjects.sourceSets.main.allSource.srcDirs.flatten()
-  jacocoReportPath = "${buildDir}/reports/jacoco/jacocoAggregateReport/jacocoAggregateReport.xml"
-}
-
-tasks.coveralls {
-  dependsOn jacocoAggregateReport
-}
+apply from: 'content.gradle'
